@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MehrdadVPN - دیپلوی خودکار</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;900&display=swap');
+*{font-family:'Vazirmatn',sans-serif;box-sizing:border-box;margin:0;padding:0}
+body.dark{background:#050510;color:#e2e8f0;overflow-x:hidden}
+body.dark::before{content:'';position:fixed;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(circle at 20% 20%,rgba(99,102,241,0.15) 0%,transparent 50%),radial-gradient(circle at 80% 80%,rgba(14,165,233,0.1) 0%,transparent 50%);animation:bgFloat 20s ease-in-out infinite;z-index:-1}
+body.light{background:#f0f2f5;color:#1a1a2e;overflow-x:hidden}
+body.light::before{content:'';position:fixed;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(circle at 20% 20%,rgba(99,102,241,0.08) 0%,transparent 50%),radial-gradient(circle at 80% 80%,rgba(14,165,233,0.06) 0%,transparent 50%);animation:bgFloat 20s ease-in-out infinite;z-index:-1}
+@keyframes bgFloat{0%,100%{transform:translate(0,0)}50%{transform:translate(-2%,2%)}}
+body.dark .lg{background:rgba(255,255,255,0.04);backdrop-filter:blur(40px) saturate(180%);border:1px solid rgba(255,255,255,0.08);border-radius:24px;box-shadow:0 8px 32px rgba(0,0,0,0.3),inset 0 1px 0 rgba(255,255,255,0.05);transition:all 0.4s}
+body.light .lg{background:rgba(255,255,255,0.6);backdrop-filter:blur(40px) saturate(180%);border:1px solid rgba(255,255,255,0.8);border-radius:24px;box-shadow:0 8px 32px rgba(0,0,0,0.06),inset 0 1px 0 rgba(255,255,255,0.9);transition:all 0.4s}
+body.dark .ic{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05);border-radius:18px;padding:14px 16px}
+body.light .ic{background:rgba(255,255,255,0.5);border:1px solid rgba(0,0,0,0.04);border-radius:18px;padding:14px 16px}
+.step-box{opacity:0.2;pointer-events:none;transform:translateY(10px);transition:all 0.6s}
+.step-box.active{opacity:1;pointer-events:auto;transform:translateY(0)}
+.sn{width:36px;height:36px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;color:white;flex-shrink:0;background:linear-gradient(135deg,#6366f1,#0ea5e9);box-shadow:0 4px 15px rgba(99,102,241,0.4);transition:all 0.4s}
+.sn.done{background:linear-gradient(135deg,#10b981,#059669);box-shadow:0 4px 15px rgba(16,185,129,0.4)}
+body.dark .inp{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);color:white;border-radius:16px;padding:12px 16px;width:100%;font-size:13px;font-family:monospace;direction:ltr;text-align:left;transition:all 0.3s}
+body.dark .inp:focus{outline:none;border-color:rgba(99,102,241,0.5);box-shadow:0 0 0 3px rgba(99,102,241,0.15);background:rgba(255,255,255,0.08)}
+body.light .inp{background:rgba(0,0,0,0.03);border:1px solid rgba(0,0,0,0.08);color:#1a1a2e;border-radius:16px;padding:12px 16px;width:100%;font-size:13px;font-family:monospace;direction:ltr;text-align:left;transition:all 0.3s}
+body.light .inp:focus{outline:none;border-color:rgba(99,102,241,0.5);box-shadow:0 0 0 3px rgba(99,102,241,0.1);background:rgba(255,255,255,0.8)}
+.btn-primary{width:100%;padding:14px;border:none;border-radius:16px;font-weight:700;font-size:14px;font-family:'Vazirmatn';background:linear-gradient(135deg,#6366f1,#0ea5e9);color:white;cursor:pointer;box-shadow:0 4px 20px rgba(99,102,241,0.3);transition:all 0.3s}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 8px 25px rgba(99,102,241,0.4)}
+.btn-primary:active{transform:translateY(0)}
+.btn-primary:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+body.dark .btn-glass{width:100%;padding:12px;border:1px solid rgba(255,255,255,0.08);border-radius:16px;font-weight:600;font-size:13px;font-family:'Vazirmatn';cursor:pointer;background:rgba(255,255,255,0.04);backdrop-filter:blur(20px);color:white;transition:all 0.3s}
+body.dark .btn-glass:hover{background:rgba(255,255,255,0.08)}
+body.light .btn-glass{width:100%;padding:12px;border:1px solid rgba(0,0,0,0.08);border-radius:16px;font-weight:600;font-size:13px;font-family:'Vazirmatn';cursor:pointer;background:rgba(255,255,255,0.6);backdrop-filter:blur(20px);color:#1a1a2e;transition:all 0.3s}
+body.light .btn-glass:hover{background:rgba(255,255,255,0.9)}
+.theme-toggle{position:fixed;top:16px;left:16px;z-index:50;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.3s;border:none;font-size:18px}
+body.dark .theme-toggle{background:rgba(255,255,255,0.06);color:#fbbf24;border:1px solid rgba(255,255,255,0.08);backdrop-filter:blur(20px)}
+body.light .theme-toggle{background:rgba(0,0,0,0.03);color:#6366f1;border:1px solid rgba(0,0,0,0.06);backdrop-filter:blur(20px)}
+.theme-toggle:hover{transform:scale(1.1)}
+@keyframes fadeUp{from{opacity:0;transform:translateY(15px)}to{opacity:1;transform:translateY(0)}}
+.fade-in{animation:fadeUp 0.5s ease-out forwards}
+@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+.shimmer{background:linear-gradient(90deg,#6366f1 25%,#0ea5e9 50%,#6366f1 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:8px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{animation:spin 1s linear infinite}
+.collapse-content{max-height:0;overflow:hidden;transition:max-height 0.4s ease-out}
+.collapse-content.open{max-height:500px}
+.collapse-arrow{transition:transform 0.3s}
+.collapse-arrow.open{transform:rotate(180deg)}
+</style>
+</head>
+<body class="dark flex items-center justify-center p-4 min-h-screen">
+<button class="theme-toggle" onclick="toggleTheme()"><i class="fas fa-moon" id="themeIcon"></i></button>
+<div class="w-full max-w-md mx-auto pt-14 pb-8">
+
+<!-- Header -->
+<div class="text-center mb-8 fade-in">
+<div class="inline-flex items-center gap-2 px-5 py-2 rounded-full mb-4" style="background:linear-gradient(135deg,rgba(99,102,241,0.15),rgba(14,165,233,0.15));border:1px solid rgba(99,102,241,0.2)">
+<span class="text-xs font-bold" style="background:linear-gradient(135deg,#818cf8,#0ea5e9);-webkit-background-clip:text;-webkit-text-fill-color:transparent">MehrdadVPN</span>
+</div>
+<h1 class="text-xl font-black mb-1.5">دیپلوی خودکار پنل VPN</h1>
+<p class="text-slate-500 text-xs">فقط توکن‌ها رو وارد کن، بقیه‌اش خودکاره</p>
+</div>
+
+<!-- STEP 1: GitHub -->
+<div id="s1" class="lg p-5 mb-4 step-box active fade-in">
+<div class="flex items-center gap-3 mb-4">
+<div id="s1n" class="sn">۱</div>
+<div><h2 class="font-bold text-sm">توکن گیتهاب</h2><p class="text-slate-400 text-[11px] mt-0.5">fork خودکار پروژه</p></div>
+</div>
+<a href="https://github.com/settings/tokens" target="_blank" class="flex items-center gap-2.5 p-3 mb-3 rounded-2xl transition-all hover:scale-[1.01]" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">
+<i class="fab fa-github text-lg text-slate-400"></i>
+<div class="flex-1"><p class="text-[11px] text-slate-300">github.com/settings/tokens</p></div>
+<span class="text-[10px] text-cyan-400"><i class="fas fa-arrow-left text-[8px] ml-1"></i>ساخت توکن</span>
+</a>
+<p class="text-[10px] text-slate-500 mb-3">فقط تیک <span class="text-cyan-400 font-bold">repo</span> و <span class="text-cyan-400 font-bold">admin:org</span> کافیه</p>
+<input id="ghToken" type="password" class="inp mb-3" placeholder="ghp_xxxxxxxxxxxx">
+<div id="ghMsg" class="hidden mb-3 text-xs"></div>
+<button onclick="step1()" id="b1" class="btn-primary"><i class="fas fa-plug ml-1.5"></i>بررسی و اتصال</button>
+</div>
+
+<!-- STEP 2: Railway -->
+<div id="s2" class="lg p-5 mb-4 step-box">
+<div class="flex items-center gap-3 mb-4">
+<div id="s2n" class="sn">۲</div>
+<div><h2 class="font-bold text-sm">توکن Railway</h2><p class="text-slate-400 text-[11px] mt-0.5">اتصال به پلتفرم ابری</p></div>
+</div>
+<a href="https://railway.app/account/tokens" target="_blank" class="flex items-center gap-2.5 p-3 mb-3 rounded-2xl transition-all hover:scale-[1.01]" style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">
+<i class="fas fa-key text-lg text-slate-400"></i>
+<div class="flex-1"><p class="text-[11px] text-slate-300">railway.app/account/tokens</p></div>
+<span class="text-[10px] text-cyan-400"><i class="fas fa-arrow-left text-[8px] ml-1"></i>ساخت توکن</span>
+</a>
+<p class="text-[10px] text-slate-500 mb-3">فقط تیک <span class="text-cyan-400 font-bold">read/write</span> کافیه</p>
+<input id="rgToken" type="password" class="inp mb-3" placeholder="railway_xxxxxxxx">
+<div id="rgMsg" class="hidden mb-3 text-xs"></div>
+<button onclick="step2()" id="b2" class="btn-primary"><i class="fas fa-plug ml-1.5"></i>بررسی و اتصال</button>
+</div>
+
+<!-- STEP 3: GitHub App -->
+<div id="s3" class="lg p-5 mb-4 step-box">
+<div class="flex items-center gap-3 mb-4">
+<div id="s3n" class="sn">۳</div>
+<div><h2 class="font-bold text-sm">اتصال GitHub به Railway</h2><p class="text-slate-400 text-[11px] mt-0.5">نصب GitHub App الزامیه</p></div>
+</div>
+<p class="text-[11px] text-slate-400 mb-3 leading-5">برای دیپلوی از گیتهاب، باید GitHub App روی اکانت Railway نصب باشه:</p>
+<a href="https://github.com/apps/railway-app/installations/new" target="_blank" class="btn-glass text-center mb-3 flex items-center justify-center gap-2"><i class="fab fa-github text-sm"></i>نصب GitHub App</a>
+<p class="text-[10px] text-slate-500 mb-3 leading-5">۱. روی دکمه بالا کلیک کنید<br>۲. دکمه <span class="font-bold">Install</span> رو بزنید<br>۳. ریپوی فورک شده رو انتخاب کنید<br>۴. بعد از نصب، دکمه پایین رو بزنید</p>
+<button onclick="step3()" id="b3" class="btn-primary"><i class="fas fa-check ml-1.5"></i>نصب کردم، دیپلوی کن</button>
+</div>
+
+<!-- STEP 4: Results -->
+<div id="s4" class="lg p-5 mb-4 step-box">
+<div class="flex items-center gap-3 mb-4">
+<div id="s4n" class="sn">۴</div>
+<div><h2 id="s4Title" class="font-bold text-sm">دیپلوی در حال انجام...</h2><p class="text-slate-400 text-[11px] mt-0.5">همه چیز خودکار انجام میشه</p></div>
+</div>
+<div id="s4Progress">
+<p id="ptxt" class="text-xs text-slate-400 mb-2.5">در حال بررسی...</p>
+<div class="h-1 bg-slate-800/50 rounded-full overflow-hidden mb-2"><div id="pbar" class="h-full shimmer transition-all duration-500" style="width:0%"></div></div>
+</div>
+<div id="logbox" class="hidden text-xs space-y-1 mb-4 max-h-32 overflow-y-auto"></div>
+<div id="s4Result" class="hidden space-y-3">
+<div class="ic"><div class="flex justify-between items-center mb-1"><span class="text-slate-400 text-xs">🔗 آدرس پنل</span><button onclick="cp('pUrl')" class="text-cyan-400 text-[10px]"><i class="fas fa-copy ml-0.5"></i>کپی</button></div><p class="font-mono text-sm" id="pUrl">-</p></div>
+<div class="ic"><span class="text-slate-400 text-xs block mb-1">🔐 نام کاربری و رمز</span><p class="text-cyan-400 font-mono text-sm">admin / admin</p></div>
+<div class="ic">
+<div class="flex justify-between items-center mb-2"><span class="text-slate-400 text-xs">🌐 TCP Proxy :8080</span></div>
+<p class="text-[11px] text-slate-400 mb-2.5">برای ساخت TCP Proxy مراحل زیر رو انجام بدید:</p>
+<a id="tcpDashLink" href="#" target="_blank" class="btn-glass text-center mb-2.5 flex items-center justify-center gap-2"><i class="fas fa-external-link-alt text-[10px]"></i>رفتن به Settings پروژه</a>
+<p class="text-[10px] text-slate-500 mb-3 leading-5">۱. روی <span class="font-bold">+ TCP Proxy</span> کلیک کنید<br>۲. پورت <span class="font-bold">8080</span> رو انتخاب کنید<br>۳. دامنه ساخته شده رو کپی کنید</p>
+<div id="tcpInputBox"><div class="flex gap-2"><input id="tcpManualDomain" type="text" class="inp flex-1" style="padding:10px 14px;font-size:12px" placeholder="دامنه TCP Proxy رو اینجا بزنید"><button onclick="setTcpDomain()" class="btn-primary" style="width:auto;padding:10px 20px;font-size:12px;border-radius:14px">ثبت</button></div></div>
+<div id="tcpActiveBox" class="hidden">
+<p class="font-mono text-sm mb-2" id="tUrl">-</p>
+<div class="flex gap-2">
+<button onclick="testTcp()" id="tBtn" class="flex-1 py-2.5 rounded-2xl text-xs font-bold transition-all" style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.2)"><i class="fas fa-signal ml-1"></i>تست پینگ</button>
+<button onclick="changeTcp()" id="nBtn" class="flex-1 py-2.5 rounded-2xl text-xs font-bold transition-all" style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.2)"><i class="fas fa-sync ml-1"></i>تغییر دامنه</button>
+</div>
+<p id="tStatus" class="text-[10px] text-center mt-2"></p>
+</div>
+</div>
+<button onclick="window.open(document.getElementById('pUrl').textContent)" class="btn-primary"><i class="fas fa-external-link-alt ml-1.5"></i>باز کردن پنل مدیریت</button>
+</div>
+</div>
+
+<!-- Location Tutorial (Collapsible) -->
+<div class="lg p-4 mb-4 fade-in">
+<button onclick="toggleCollapse('locTut')" class="w-full flex items-center justify-between text-sm font-bold">
+<div class="flex items-center gap-2"><i class="fas fa-map-marker-alt text-cyan-400"></i><span>آموزش تغییر لوکشین سرور</span></div>
+<i class="fas fa-chevron-down text-slate-400 text-xs collapse-arrow" id="locTutArrow"></i>
+</button>
+<div class="collapse-content" id="locTut">
+<div class="pt-3 text-[11px] text-slate-400 leading-6">
+<p class="mb-2">برای تغییر لوکشین سرور بعد از دیپلوی:</p>
+<p class="mb-1">۱. وارد <span class="text-cyan-400 font-bold">Railway Dashboard</span> شوید</p>
+<p class="mb-1">۲. پروژه دیپلوی شده رو باز کنید</p>
+<p class="mb-1">۳. از منوی پایین روی <span class="text-cyan-400 font-bold">Settings</span> (چرخ‌دنده) کلیک کنید</p>
+<p class="mb-1">۴. بخش <span class="text-cyan-400 font-bold">Scale</span> → <span class="text-cyan-400 font-bold">Regions & Replicas</span></p>
+<p class="mb-2">۵. از منوی کشویی لوکشین مورد نظر رو انتخاب کنید</p>
+<div class="p-2.5 rounded-xl" style="background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2)">
+<p class="text-[10px]">💡 <span class="font-bold">هلند</span> برای پینگ پایین‌تر بهترین انتخابه. سرورهای دیگه هم سرعتشون خوبه.</p>
+</div>
+</div>
+</div>
+</div>
+
+<!-- Tribute -->
+<div class="text-center mt-4 mb-4 fade-in">
+<p class="text-slate-500 text-xs">ساخته شده توسط <span class="font-bold" style="background:linear-gradient(135deg,#818cf8,#0ea5e9);-webkit-background-clip:text;-webkit-text-fill-color:transparent">مهرداد</span> <a href="https://t.me/saweg78" target="_blank" class="text-blue-400 text-[11px] hover:underline">@saweg78</a></p>
+<p class="text-slate-600 text-[10px] mt-1.5">به یاد <span class="font-bold" style="background:linear-gradient(135deg,#818cf8,#0ea5e9);-webkit-background-clip:text;-webkit-text-fill-color:transparent">Armik</span> که همیشه وصلمون میکرد 🕊️ <span class="text-slate-500">(روحش شاد)</span></p>
+</div>
+</div>
+
+<script>
+const S={gh:'',rg:'',projId:'',svcId:'',envId:'',tcpDomain:''};
+const api=async(u,b)=>{const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});return r.json()};
+const sl=ms=>new Promise(r=>setTimeout(r,ms));
+
+function toggleTheme(){const b=document.body,i=document.getElementById('themeIcon');if(b.classList.contains('dark')){b.classList.remove('dark');b.classList.add('light');i.className='fas fa-sun';localStorage.setItem('theme','light')}else{b.classList.remove('light');b.classList.add('dark');i.className='fas fa-moon';localStorage.setItem('theme','dark')}}
+(function(){const t=localStorage.getItem('theme');if(t==='light'){document.body.classList.remove('dark');document.body.classList.add('light');document.getElementById('themeIcon').className='fas fa-sun'}})();
+
+function toggleCollapse(id){document.getElementById(id).classList.toggle('open');document.getElementById(id+'Arrow').classList.toggle('open')}
+
+async function step1(){const t=document.getElementById('ghToken').value.trim();if(!t)return;const b=document.getElementById('b1');b.disabled=true;b.innerHTML='<i class="fas fa-spinner spin"></i> ...';const m=document.getElementById('ghMsg');m.classList.remove('hidden');try{m.innerHTML='<span class="text-slate-400">بررسی توکن...</span>';const v=await api('/api/connect',{action:'verify_github',githubToken:t});if(v.status==='error')throw new Error(v.error);S.gh=t;m.innerHTML='<i class="fas fa-check-circle text-green-400"></i> <span class="text-green-400">'+v.user+' — متصل ✓</span>';document.getElementById('s1n').classList.add('done');document.getElementById('s1n').innerHTML='<i class="fas fa-check"></i>';document.getElementById('s2').classList.add('active')}catch(e){m.innerHTML='<i class="fas fa-times-circle text-red-400"></i> <span class="text-red-400">'+e.message+'</span>'}b.disabled=false;b.innerHTML='<i class="fas fa-check ml-1.5"></i>بررسی و اتصال'}
+
+async function step2(){const t=document.getElementById('rgToken').value.trim();if(!t)return;const b=document.getElementById('b2');b.disabled=true;b.innerHTML='<i class="fas fa-spinner spin"></i> ...';const m=document.getElementById('rgMsg');m.classList.remove('hidden');try{m.innerHTML='<span class="text-slate-400">بررسی توکن...</span>';const v=await api('/api/connect',{action:'verify_railway',railwayToken:t});if(v.status==='error')throw new Error(v.error);S.rg=t;m.innerHTML='<i class="fas fa-check-circle text-green-400"></i> <span class="text-green-400">'+v.email+' — متصل ✓</span>';document.getElementById('s2n').classList.add('done');document.getElementById('s2n').innerHTML='<i class="fas fa-check"></i>';document.getElementById('s3').classList.add('active')}catch(e){m.innerHTML='<i class="fas fa-times-circle text-red-400"></i> <span class="text-red-400">'+e.message+'</span>'}b.disabled=false;b.innerHTML='<i class="fas fa-check ml-1.5"></i>بررسی و اتصال'}
+
+async function step3(){
+document.getElementById('s3n').classList.add('done');document.getElementById('s3n').innerHTML='<i class="fas fa-check"></i>';
+document.getElementById('s4').classList.add('active');
+const steps=[{t:'فورک پروژه...',p:15},{t:'اتصال GitHub به Railway...',p:30},{t:'ساخت پروژه...',p:45},{t:'دیپلوی کد...',p:60},{t:'ساخت دامنه...',p:80},{t:'تکمیل!',p:100}];
+for(const s of steps){document.getElementById('ptxt').textContent=s.t;document.getElementById('pbar').style.width=s.p+'%';await sl(600)}
+try{
+const r=await api('/api/deploy',{githubToken:S.gh,railwayToken:S.rg});
+if(r.status==='error')throw new Error(r.error);
+if(r.status==='need_github_app'){document.getElementById('logbox').innerHTML='<p class="text-amber-400">⚠️ '+r.error+'</p><p><a href="'+r.installUrl+'" target="_blank" class="text-cyan-400 underline font-bold">👉 نصب GitHub App</a></p>';document.getElementById('logbox').classList.remove('hidden');return}
+if(r.log)document.getElementById('logbox').innerHTML=r.log.map(l=>'<p class="text-green-400">✓ '+l+'</p>').join('');
+S.projId=r.projectId;S.svcId=r.serviceId;S.envId=r.environmentId;
+document.getElementById('pUrl').textContent=r.panelUrl;
+document.getElementById('tcpDashLink').href='https://railway.com/project/'+r.projectId;
+document.getElementById('s4Progress').classList.add('hidden');
+document.getElementById('s4Result').classList.remove('hidden');
+document.getElementById('s4Title').textContent='دیپلوی موفق! 🎉';
+document.getElementById('logbox').classList.remove('hidden');
+}catch(e){document.getElementById('ptxt').textContent='خطا: '+e.message;document.getElementById('pbar').style.background='#ef4444';document.getElementById('logbox').innerHTML='<p class="text-red-400">❌ '+e.message+'</p>';document.getElementById('logbox').classList.remove('hidden')}
+}
+
+function setTcpDomain(){const d=document.getElementById('tcpManualDomain').value.trim();if(!d)return;S.tcpDomain=d;document.getElementById('tUrl').textContent=d;document.getElementById('tcpInputBox').classList.add('hidden');document.getElementById('tcpActiveBox').classList.remove('hidden')}
+
+async function testTcp(){if(!S.tcpDomain)return;document.getElementById('tBtn').innerHTML='<i class="fas fa-spinner spin"></i>';document.getElementById('tStatus').className='text-[10px] text-center mt-2 text-slate-400';document.getElementById('tStatus').textContent='در حال تست پینگ...';try{const r=await api('/api/tcp',{action:'test',host:S.tcpDomain,railwayToken:S.rg});const st=document.getElementById('tStatus');if(r.status==='ok'){st.textContent='✅ '+r.host+' — پاسخ داد';st.className='text-[10px] text-center mt-2 text-green-400 font-bold'}else{st.textContent='❌ '+r.host+' — پاسخ نداد';st.className='text-[10px] text-center mt-2 text-red-400 font-bold'}}catch(e){document.getElementById('tStatus').textContent='❌ خطا: '+e.message}document.getElementById('tBtn').innerHTML='<i class="fas fa-signal ml-1"></i>تست پینگ'}
+
+function changeTcp(){document.getElementById('tcpActiveBox').classList.add('hidden');document.getElementById('tcpInputBox').classList.remove('hidden');document.getElementById('tcpManualDomain').value='';document.getElementById('tcpManualDomain').focus()}
+
+function cp(id){navigator.clipboard?.writeText(document.getElementById(id).textContent)}
+</script>
+</body>
+</html>
