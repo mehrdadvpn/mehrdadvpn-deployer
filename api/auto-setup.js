@@ -69,22 +69,26 @@ module.exports = async (req, res) => {
 // ═══════════════════════════════════════════
 async function login(panelUrl) {
   const base = panelUrl.replace(/\/$/, '');
-  const r = await fetch(`${base}/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: 'username=admin&password=admin',
-    redirect: 'manual'
-  });
-  const setCookie = r.headers.get('set-cookie');
-  if (!setCookie) throw new Error('Login failed — no cookie');
-  const session = setCookie.split(';')[0];
-  // Follow redirect to get session established
-  const cookie = session.split('=')[1];
-  const check = await fetch(`${base}/`, {
-    headers: { 'Cookie': session },
-    redirect: 'manual'
-  });
-  return session;
+  // Try /managepanel/login first, then /login
+  for (const path of ['/managepanel/login', '/login']) {
+    const r = await fetch(`${base}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'username=admin&password=admin',
+      redirect: 'manual'
+    });
+    const setCookie = r.headers.get('set-cookie');
+    if (setCookie) {
+      const session = setCookie.split(';')[0];
+      // Verify session works
+      const check = await fetch(`${base}/managepanel/`, {
+        headers: { 'Cookie': session },
+        redirect: 'manual'
+      });
+      return session;
+    }
+  }
+  throw new Error('Login failed — no cookie from any endpoint');
 }
 
 // ═══════════════════════════════════════════
@@ -161,7 +165,7 @@ async function createInbound(panelUrl, cookie, { tcpDomain, tcpPort, privateKey,
   body.append('sniffing', JSON.stringify(sniffing));
   body.append('tag', 'vless_xhttp_reality');
 
-  const r = await fetch(`${base}/panel/api/inbounds/add`, {
+  const r = await fetch(`${base}/managepanel/api/inbounds/add`, {
     method: 'POST',
     headers: {
       'Cookie': cookie,
@@ -174,7 +178,7 @@ async function createInbound(panelUrl, cookie, { tcpDomain, tcpPort, privateKey,
   if (data.success === false) throw new Error(data.msg || 'Create inbound failed');
 
   // Get the inbound ID
-  const listR = await fetch(`${base}/panel/api/inbounds`, {
+  const listR = await fetch(`${base}/managepanel/api/inbounds`, {
     headers: { 'Cookie': cookie }
   });
   const listData = await listR.json();
@@ -203,7 +207,7 @@ async function configureSubscription(panelUrl, cookie, panelDomain) {
   const body = new URLSearchParams();
   body.append('settings', JSON.stringify(settings));
 
-  const r = await fetch(`${base}/panel/api/panel/updatePanelSettings`, {
+  const r = await fetch(`${base}/managepanel/api/panel/updatePanelSettings`, {
     method: 'POST',
     headers: {
       'Cookie': cookie,
@@ -221,7 +225,7 @@ async function configureSubscription(panelUrl, cookie, panelDomain) {
 // ═══════════════════════════════════════════
 async function restartPanel(panelUrl, cookie) {
   const base = panelUrl.replace(/\/$/, '');
-  await fetch(`${base}/panel/api/restart`, {
+  await fetch(`${base}/managepanel/api/restart`, {
     method: 'POST',
     headers: { 'Cookie': cookie }
   });
@@ -254,7 +258,7 @@ async function createClient(panelUrl, cookie, inboundId) {
   body.append('id', String(inboundId));
   body.append('settings', JSON.stringify({ clients: [client] }));
 
-  const r = await fetch(`${base}/panel/api/inbounds/update/${inboundId}`, {
+  const r = await fetch(`${base}/managepanel/api/inbounds/update/${inboundId}`, {
     method: 'POST',
     headers: {
       'Cookie': cookie,
