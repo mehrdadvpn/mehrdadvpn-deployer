@@ -142,7 +142,7 @@ body.light .theme-toggle{background:rgba(0,0,0,0.03);color:#6366f1;border:1px so
 </div>
 
 <!-- Auto Setup Section -->
-<div id="autoSetupSection" class="lg p-5 mb-4 hidden fade-in" style="animation-delay:0.3s">
+<div id="autoSetupSection" class="lg p-5 mb-4 fade-in" style="animation-delay:0.3s;opacity:0.4;pointer-events:none;transition:all 0.5s">
 <div class="flex items-center gap-3 mb-4">
 <div class="w-10 h-10 rounded-2xl flex items-center justify-center" style="background:linear-gradient(135deg,#10b981,#059669);box-shadow:0 4px 15px rgba(16,185,129,0.4)"><i class="fas fa-magic text-white text-lg"></i></div>
 <div><h2 class="font-bold text-sm">تنظیم خودکار پنل</h2><p class="text-slate-400 text-[11px] mt-0.5">ساخت inbound + client با یک کلیک</p></div>
@@ -224,7 +224,7 @@ document.getElementById('logbox').classList.remove('hidden');
 
 function setTcpDomain(){const d=document.getElementById('tcpManualDomain').value.trim();if(!d)return;S.tcpDomain=d;document.getElementById('tUrl').textContent=d;document.getElementById('tcpInputBox').classList.add('hidden');document.getElementById('tcpActiveBox').classList.remove('hidden')}
 
-async function testTcp(){if(!S.tcpDomain)return;document.getElementById('tBtn').innerHTML='<i class="fas fa-spinner spin"></i>';document.getElementById('tStatus').className='text-[10px] text-center mt-2 text-slate-400';document.getElementById('tStatus').textContent='در حال تست پینگ...';try{const r=await api('/api/tcp',{action:'test',host:S.tcpDomain,railwayToken:S.rg});const st=document.getElementById('tStatus');if(r.status==='ok'){st.textContent='✅ '+r.host+' — پاسخ داد';st.className='text-[10px] text-center mt-2 text-green-400 font-bold';document.getElementById('autoSetupSection').classList.remove('hidden')}else{st.textContent='❌ '+r.host+' — پاسخ نداد';st.className='text-[10px] text-center mt-2 text-red-400 font-bold'}}catch(e){document.getElementById('tStatus').textContent='❌ خطا: '+e.message}document.getElementById('tBtn').innerHTML='<i class="fas fa-signal ml-1"></i>تست پینگ'}
+async function testTcp(){if(!S.tcpDomain)return;document.getElementById('tBtn').innerHTML='<i class="fas fa-spinner spin"></i>';document.getElementById('tStatus').className='text-[10px] text-center mt-2 text-slate-400';document.getElementById('tStatus').textContent='در حال تست پینگ...';try{const r=await api('/api/tcp',{action:'test',host:S.tcpDomain,railwayToken:S.rg});const st=document.getElementById('tStatus');if(r.status==='ok'){st.textContent='✅ '+r.host+' — پاسخ داد';st.className='text-[10px] text-center mt-2 text-green-400 font-bold';const a=document.getElementById('autoSetupSection');a.style.opacity='1';a.style.pointerEvents='auto'}else{st.textContent='❌ '+r.host+' — پاسخ نداد';st.className='text-[10px] text-center mt-2 text-red-400 font-bold'}}catch(e){document.getElementById('tStatus').textContent='❌ خطا: '+e.message}document.getElementById('tBtn').innerHTML='<i class="fas fa-signal ml-1"></i>تست پینگ'}
 
 function changeTcp(){document.getElementById('tcpActiveBox').classList.add('hidden');document.getElementById('tcpInputBox').classList.remove('hidden');document.getElementById('tcpManualDomain').value='';document.getElementById('tcpManualDomain').focus()}
 

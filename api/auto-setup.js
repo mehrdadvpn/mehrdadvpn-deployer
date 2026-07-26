@@ -128,7 +128,8 @@ async function createInbound(panelUrl, cookie, { tcpDomain, tcpPort, privateKey,
       mode: 'auto',
       extra: {
         header: { type: 'none' },
-        download: 14
+        download: 14,
+        host: panelUrl.replace('https://', '').replace('/managepanel/', '').replace('/managepanel', '') + '/managepanel/'
       }
     }
   };
