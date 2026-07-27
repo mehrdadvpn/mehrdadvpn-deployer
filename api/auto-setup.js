@@ -69,26 +69,41 @@ module.exports = async (req, res) => {
 // ═══════════════════════════════════════════
 async function login(panelUrl) {
   const base = panelUrl.replace(/\/$/, '');
-  // Try /managepanel/login first, then /login
-  for (const path of ['/managepanel/login', '/login']) {
-    const r = await fetch(`${base}${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: 'username=admin&password=admin',
-      redirect: 'manual'
-    });
-    const setCookie = r.headers.get('set-cookie');
-    if (setCookie) {
-      const session = setCookie.split(';')[0];
-      // Verify session works
-      const check = await fetch(`${base}/managepanel/`, {
-        headers: { 'Cookie': session },
-        redirect: 'manual'
-      });
-      return session;
-    }
+
+  // Step 1: Get session cookie + CSRF token
+  const pageRes = await fetch(`${base}/`, { redirect: 'manual' });
+  const pageHtml = await pageRes.text();
+  const csrfMatch = pageHtml.match(/csrf-token["\s]+content="([^"]+)"/);
+  if (!csrfMatch) throw new Error('CSRF token not found');
+  const csrfToken = csrfMatch[1];
+
+  // Get cookie from page response
+  const setCookie = pageRes.headers.get('set-cookie');
+  if (!setCookie) throw new Error('No session cookie');
+  const sessionCookie = setCookie.split(';')[0];
+
+  // Step 2: Login with CSRF + session cookie
+  const loginRes = await fetch(`${base}/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': sessionCookie,
+      'x-csrf-token': csrfToken,
+      'x-requested-with': 'XMLHttpRequest'
+    },
+    body: JSON.stringify({ username: 'admin', password: 'admin' }),
+    redirect: 'manual'
+  });
+
+  const loginData = await loginRes.json();
+  if (!loginData.success) throw new Error(loginData.msg || 'Login failed');
+
+  // Get updated cookie after login
+  const loginCookie = loginRes.headers.get('set-cookie');
+  if (loginCookie) {
+    return sessionCookie.split('=')[0] + '=' + loginCookie.split(';')[0].split('=').slice(1).join('=');
   }
-  throw new Error('Login failed — no cookie from any endpoint');
+  return sessionCookie;
 }
 
 // ═══════════════════════════════════════════
