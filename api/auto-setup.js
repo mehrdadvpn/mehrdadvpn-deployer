@@ -28,23 +28,32 @@ module.exports = async (req, res) => {
     const keys = generateRealityKeys();
     step('✅ کلیدها ساخته شد');
 
-    // ═══ Step 3: Create inbound ═══
+    // ═══ Step 3: Delete old inbound on port 8080 if exists ═══
+    step('🗑️ بررسی Inbound قبلی...');
+    const listData0 = await apiCall(base, '/panel/api/inbounds', cookie, csrf);
+    const oldInbounds = (listData0.obj || []).filter(i => i.port === 8080);
+    for (const old of oldInbounds) {
+      await apiCall(base, `/panel/api/inbounds/del/${old.id}`, cookie, csrf, {});
+      step(`🗑️ Inbound قبلی (ID: ${old.id}) حذف شد`);
+    }
+
+    // ═══ Step 4: Create inbound ═══
     step('🌐 ساخت Inbound (VLESS + Xhttp + Reality)...');
     const inboundId = await createInbound(base, cookie, csrf, { tcpDomain, tcpPort, privateKey: keys.privateKey, shortId: keys.shortId });
     step(`✅ Inbound ساخته شد (ID: ${inboundId})`);
 
-    // ═══ Step 4: Configure subscription ═══
+    // ═══ Step 5: Configure subscription ═══
     step('📋 تنظیم Subscription...');
     await configureSubscription(base, cookie, csrf, panelDomain);
     step('✅ Subscription تنظیم شد');
 
-    // ═══ Step 5: Restart panel ═══
+    // ═══ Step 6: Restart panel ═══
     step('🔄 ری‌استارت پنل...');
     await restartPanel(base, cookie, csrf);
     step('⏳ ۱۰ ثانیه صبر...');
     await sleep(10000);
 
-    // ═══ Step 6: Create client ═══
+    // ═══ Step 7: Create client ═══
     step('👤 ساخت Client...');
     const clientInfo = await createClient(base, cookie, csrf, inboundId);
     step('✅ Client ساخته شد');
