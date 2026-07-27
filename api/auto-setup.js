@@ -64,26 +64,31 @@ module.exports = async (req, res) => {
 };
 
 // ═══════════════════════════════════════════
-// LOGIN
+// LOGIN — Get session cookie + CSRF, then login
 // ═══════════════════════════════════════════
 async function login(base) {
+  // Step 1: Visit login page, get session cookie
   const pageRes = await fetch(`${base}/`, { redirect: 'manual' });
-  const pageHtml = await pageRes.text();
-  const csrfMatch = pageHtml.match(/csrf-token["\s]+content="([^"]+)"/);
-  if (!csrfMatch) throw new Error('CSRF token not found');
-  const csrfToken = csrfMatch[1];
-
   const setCookie = pageRes.headers.get('set-cookie');
-  if (!setCookie) throw new Error('No session cookie');
+  if (!setCookie) throw new Error('No session cookie from login page');
   const sessionCookie = setCookie.split(';')[0];
 
+  // Step 2: Get CSRF token from /csrf-token endpoint
+  const csrfRes = await fetch(`${base}/csrf-token`, {
+    headers: { 'Cookie': sessionCookie, 'X-Requested-With': 'XMLHttpRequest' }
+  });
+  const csrfData = await csrfRes.json();
+  if (!csrfData.success || !csrfData.obj) throw new Error('CSRF token fetch failed');
+  const csrfToken = csrfData.obj;
+
+  // Step 3: Login with JSON body
   const loginRes = await fetch(`${base}/login`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Cookie': sessionCookie,
-      'x-csrf-token': csrfToken,
-      'x-requested-with': 'XMLHttpRequest'
+      'X-CSRF-Token': csrfToken,
+      'X-Requested-With': 'XMLHttpRequest'
     },
     body: JSON.stringify({ username: 'admin', password: 'admin' }),
     redirect: 'manual'
@@ -92,31 +97,53 @@ async function login(base) {
   const loginData = await loginRes.json();
   if (!loginData.success) throw new Error(loginData.msg || 'Login failed');
 
-  const loginCookie = loginRes.headers.get('set-cookie');
+  // Get updated cookie after login
   let cookie = sessionCookie;
-  if (loginCookie) {
-    cookie = sessionCookie.split('=')[0] + '=' + loginCookie.split(';')[0].split('=').slice(1).join('=');
+  const loginSetCookie = loginRes.headers.get('set-cookie');
+  if (loginSetCookie) {
+    const name = sessionCookie.split('=')[0];
+    const val = loginSetCookie.split(';')[0].split('=').slice(1).join('=');
+    cookie = name + '=' + val;
+  }
+
+  // Refresh CSRF after login
+  const csrfRes2 = await fetch(`${base}/csrf-token`, {
+    headers: { 'Cookie': cookie, 'X-Requested-With': 'XMLHttpRequest' }
+  });
+  const csrfData2 = await csrfRes2.json();
+  if (csrfData2.success && csrfData2.obj) {
+    return { cookie, csrf: csrfData2.obj };
   }
   return { cookie, csrf: csrfToken };
 }
 
 // ═══════════════════════════════════════════
-// API HELPER
+// API CALL HELPER — uses form-urlencoded like the panel
 // ═══════════════════════════════════════════
 async function apiCall(base, path, cookie, csrf, body = null) {
   const opts = {
     method: body ? 'POST' : 'GET',
     headers: {
       'Cookie': cookie,
-      'Content-Type': 'application/json',
-      'x-csrf-token': csrf,
-      'x-requested-with': 'XMLHttpRequest'
+      'X-CSRF-Token': csrf,
+      'X-Requested-With': 'XMLHttpRequest'
     }
   };
-  if (body) opts.body = JSON.stringify(body);
+  if (body) {
+    opts.headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(body)) {
+      if (typeof v === 'object') {
+        params.append(k, JSON.stringify(v));
+      } else {
+        params.append(k, String(v));
+      }
+    }
+    opts.body = params.toString();
+  }
   const r = await fetch(`${base}${path}`, opts);
   const text = await r.text();
-  try { return JSON.parse(text); } catch(e) { return { success: false, msg: 'Empty response: ' + text.substring(0, 100) }; }
+  try { return JSON.parse(text); } catch(e) { return { success: false, msg: 'Empty/invalid response: ' + text.substring(0, 200) }; }
 }
 
 // ═══════════════════════════════════════════
@@ -162,7 +189,7 @@ async function createInbound(base, cookie, csrf, { tcpDomain, tcpPort, privateKe
     }
   };
 
-  const data = await apiCall(base, '/managepanel/api/inbounds/add', cookie, csrf, {
+  const data = await apiCall(base, '/panel/api/inbounds/add', cookie, csrf, {
     up: 0, down: 0, total: 0,
     remark: '@saweg78', enable: true, expiryTime: 0,
     listen: '', port: 8080, protocol: 'vless',
@@ -174,7 +201,8 @@ async function createInbound(base, cookie, csrf, { tcpDomain, tcpPort, privateKe
 
   if (data.success === false) throw new Error(data.msg || 'Create inbound failed');
 
-  const listData = await apiCall(base, '/managepanel/api/inbounds', cookie, csrf);
+  // Get inbound ID
+  const listData = await apiCall(base, '/panel/api/inbounds', cookie, csrf);
   const inbounds = listData.obj || [];
   const inbound = inbounds.find(i => i.remark === '@saweg78');
   if (!inbound) throw new Error('Inbound not found after creation');
@@ -185,7 +213,7 @@ async function createInbound(base, cookie, csrf, { tcpDomain, tcpPort, privateKe
 // CONFIGURE SUBSCRIPTION
 // ═══════════════════════════════════════════
 async function configureSubscription(base, cookie, csrf, panelDomain) {
-  const data = await apiCall(base, '/managepanel/api/panel/updatePanelSettings', cookie, csrf, {
+  const data = await apiCall(base, '/panel/api/panel/updatePanelSettings', cookie, csrf, {
     settings: {
       sub: {
         subEnable: true,
@@ -202,7 +230,7 @@ async function configureSubscription(base, cookie, csrf, panelDomain) {
 // RESTART PANEL
 // ═══════════════════════════════════════════
 async function restartPanel(base, cookie, csrf) {
-  await apiCall(base, '/managepanel/api/restart', cookie, csrf, {});
+  await apiCall(base, '/panel/api/restart', cookie, csrf, {});
 }
 
 // ═══════════════════════════════════════════
@@ -220,7 +248,7 @@ async function createClient(base, cookie, csrf, inboundId) {
     flow: 'xtls-rprx-vision'
   };
 
-  const data = await apiCall(base, `/managepanel/api/inbounds/update/${inboundId}`, cookie, csrf, {
+  const data = await apiCall(base, `/panel/api/inbounds/update/${inboundId}`, cookie, csrf, {
     id: inboundId,
     settings: { clients: [client] }
   });
