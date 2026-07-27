@@ -28,42 +28,112 @@ module.exports = async (req, res) => {
     const keys = generateRealityKeys();
     step('✅ کلیدها ساخته شد');
 
-    // ═══ Step 3: Delete old inbound on port 8080 if exists ═══
+    // ═══ Step 3: Delete old inbound on port 8080 ═══
     step('🗑️ بررسی Inbound قبلی...');
-    const listData0 = await apiCall(base, '/panel/api/inbounds', cookie, csrf);
-    const oldInbounds = (listData0.obj || []).filter(i => i.port === 8080);
+    const existing = await apiGet(base, '/panel/api/inbounds/list/slim', cookie, csrf);
+    const oldInbounds = (existing || []).filter(i => String(i.port) === '8080');
     for (const old of oldInbounds) {
-      await apiCall(base, `/panel/api/inbounds/del/${old.id}`, cookie, csrf, {});
-      step(`🗑️ Inbound قبلی (ID: ${old.id}) حذف شد`);
+      await apiPost(base, `/panel/api/inbounds/del/${old.id}`, cookie, csrf, '');
+      step(`🗑️ Inbound قبلی "${old.remark}" (ID: ${old.id}) حذف شد`);
     }
 
     // ═══ Step 4: Create inbound ═══
     step('🌐 ساخت Inbound (VLESS + Xhttp + Reality)...');
-    const inboundId = await createInbound(base, cookie, csrf, { tcpDomain, tcpPort, privateKey: keys.privateKey, shortId: keys.shortId });
+    const hostDomain = base.replace('https://', '').replace('http://', '');
+    const streamSettings = {
+      network: 'xhttp',
+      security: 'reality',
+      realitySettings: {
+        show: false, dest: 'www.samsung.com:443',
+        serverNames: ['www.samsung.com'],
+        privateKey: keys.privateKey, shortIds: [keys.shortId],
+        source: '', xver: 0
+      },
+      xhttpSettings: {
+        path: '/', mode: 'auto',
+        extra: { header: { type: 'none' }, download: 14, host: hostDomain + '/managepanel/' }
+      }
+    };
+    const addBody = new URLSearchParams({
+      up: '0', down: '0', total: '0',
+      remark: '@saweg78', enable: 'true', expiryTime: '0',
+      listen: '', port: '8080', protocol: 'vless',
+      settings: JSON.stringify({ clients: [], decryption: 'none', fallbacks: [] }),
+      streamSettings: JSON.stringify(streamSettings),
+      sniffing: JSON.stringify({ enabled: true, destOverride: ['http', 'tls'], routeOnly: false }),
+      tag: 'vless_xhttp_reality'
+    });
+    const addResult = await apiPostForm(base, '/panel/api/inbounds/add', cookie, csrf, addBody.toString());
+    if (!addResult || !addResult.success) throw new Error(addResult?.msg || 'Create inbound failed');
+    const inboundId = addResult.obj?.id;
     step(`✅ Inbound ساخته شد (ID: ${inboundId})`);
 
     // ═══ Step 5: Configure subscription ═══
     step('📋 تنظیم Subscription...');
-    await configureSubscription(base, cookie, csrf, panelDomain);
+    const allSettings = await apiPostForm(base, '/panel/api/setting/all', cookie, csrf, '');
+    if (allSettings?.obj) {
+      const updated = allSettings.obj;
+      updated.sub = updated.sub || {};
+      updated.sub.subEnable = true;
+      updated.sub.subPath = '/sub/';
+      updated.sub.subUri = `https://${panelDomain}/sub/`;
+      const settingsBody = new URLSearchParams({ settings: JSON.stringify(updated) });
+      const updateResult = await apiPostForm(base, '/panel/api/setting/update', cookie, csrf, settingsBody.toString());
+      if (!updateResult?.success) throw new Error(updateResult?.msg || 'Settings update failed');
+    }
     step('✅ Subscription تنظیم شد');
 
-    // ═══ Step 6: Restart panel ═══
+    // ═══ Step 6: Restart Xray ═══
     step('🔄 ری‌استارت پنل...');
-    await restartPanel(base, cookie, csrf);
+    await apiPost(base, '/panel/api/xray/restart', cookie, csrf, '');
     step('⏳ ۱۰ ثانیه صبر...');
     await sleep(10000);
 
     // ═══ Step 7: Create client ═══
     step('👤 ساخت Client...');
-    const clientInfo = await createClient(base, cookie, csrf, inboundId);
+    const expiryTime = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60);
+    const uuid = crypto.randomUUID();
+    const email = `user-${uuid.substring(0, 8)}`;
+    const client = {
+      email, enable: true, expiryTime,
+      trafficLimit: 100, trafficLimitUnit: 'GB',
+      uuid, subId: '', limitIp: 0,
+      flow: 'xtls-rprx-vision'
+    };
+    const clientBody = new URLSearchParams({
+      id: String(inboundId),
+      settings: JSON.stringify({ clients: [client] })
+    });
+    const clientResult = await apiPostForm(base, `/panel/api/inbounds/add`, cookie, csrf, clientBody.toString());
+    // If that doesn't work, try the update approach - get inbound, modify, save back
+    if (!clientResult?.success) {
+      // Get current inbound
+      const inbData = await apiGet(base, `/panel/api/inbounds/get/${inboundId}`, cookie, csrf);
+      if (inbData?.obj) {
+        const inb = inbData.obj;
+        inb.settings = inb.settings || {};
+        inb.settings.clients = inb.settings.clients || [];
+        inb.settings.clients.push(client);
+        const updateBody = new URLSearchParams({
+          id: String(inboundId),
+          remark: inb.remark, enable: String(inb.enable), port: String(inb.port),
+          protocol: inb.protocol, listen: inb.listen || '',
+          settings: JSON.stringify(inb.settings),
+          streamSettings: JSON.stringify(inb.streamSettings),
+          sniffing: JSON.stringify(inb.sniffing || {}),
+          tag: inb.tag || ''
+        });
+        const updateResult = await apiPostForm(base, `/panel/api/inbounds/add`, cookie, csrf, updateBody.toString());
+        if (!updateResult?.success) throw new Error(updateResult?.msg || 'Create client failed');
+      }
+    }
     step('✅ Client ساخته شد');
 
+    const configUrl = `vless://${uuid}@${hostDomain}:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=www.samsung.com&fp=chrome&type=xhttp&path=%2F&mode=auto#${encodeURIComponent(email)}`;
+    const subscriptionUrl = `${base}/sub/${uuid}`;
+
     return res.status(200).json({
-      status: 'ok',
-      config: clientInfo.config,
-      subscription: clientInfo.subscription,
-      email: clientInfo.email,
-      log
+      status: 'ok', config: configUrl, subscription: subscriptionUrl, email, log
     });
 
   } catch (err) {
@@ -73,16 +143,14 @@ module.exports = async (req, res) => {
 };
 
 // ═══════════════════════════════════════════
-// LOGIN — Get session cookie + CSRF, then login
+// LOGIN
 // ═══════════════════════════════════════════
 async function login(base) {
-  // Step 1: Visit login page, get session cookie
   const pageRes = await fetch(`${base}/`, { redirect: 'manual' });
   const setCookie = pageRes.headers.get('set-cookie');
-  if (!setCookie) throw new Error('No session cookie from login page');
+  if (!setCookie) throw new Error('No session cookie');
   const sessionCookie = setCookie.split(';')[0];
 
-  // Step 2: Get CSRF token from /csrf-token endpoint
   const csrfRes = await fetch(`${base}/csrf-token`, {
     headers: { 'Cookie': sessionCookie, 'X-Requested-With': 'XMLHttpRequest' }
   });
@@ -90,7 +158,6 @@ async function login(base) {
   if (!csrfData.success || !csrfData.obj) throw new Error('CSRF token fetch failed');
   const csrfToken = csrfData.obj;
 
-  // Step 3: Login with JSON body
   const loginRes = await fetch(`${base}/login`, {
     method: 'POST',
     headers: {
@@ -102,11 +169,9 @@ async function login(base) {
     body: JSON.stringify({ username: 'admin', password: 'admin' }),
     redirect: 'manual'
   });
-
   const loginData = await loginRes.json();
   if (!loginData.success) throw new Error(loginData.msg || 'Login failed');
 
-  // Get updated cookie after login
   let cookie = sessionCookie;
   const loginSetCookie = loginRes.headers.get('set-cookie');
   if (loginSetCookie) {
@@ -120,39 +185,35 @@ async function login(base) {
     headers: { 'Cookie': cookie, 'X-Requested-With': 'XMLHttpRequest' }
   });
   const csrfData2 = await csrfRes2.json();
-  if (csrfData2.success && csrfData2.obj) {
-    return { cookie, csrf: csrfData2.obj };
-  }
-  return { cookie, csrf: csrfToken };
+  return { cookie, csrf: csrfData2?.obj || csrfToken };
 }
 
 // ═══════════════════════════════════════════
-// API CALL HELPER — uses form-urlencoded like the panel
+// API HELPERS
 // ═══════════════════════════════════════════
-async function apiCall(base, path, cookie, csrf, body = null) {
-  const opts = {
-    method: body ? 'POST' : 'GET',
-    headers: {
-      'Cookie': cookie,
-      'X-CSRF-Token': csrf,
-      'X-Requested-With': 'XMLHttpRequest'
-    }
-  };
-  if (body) {
-    opts.headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
-    const params = new URLSearchParams();
-    for (const [k, v] of Object.entries(body)) {
-      if (typeof v === 'object') {
-        params.append(k, JSON.stringify(v));
-      } else {
-        params.append(k, String(v));
-      }
-    }
-    opts.body = params.toString();
-  }
-  const r = await fetch(`${base}${path}`, opts);
+async function apiGet(base, path, cookie, csrf) {
+  const r = await fetch(`${base}${path}`, {
+    headers: { 'Cookie': cookie, 'X-CSRF-Token': csrf, 'X-Requested-With': 'XMLHttpRequest' }
+  });
   const text = await r.text();
-  try { return JSON.parse(text); } catch(e) { return { success: false, msg: 'Empty/invalid response: ' + text.substring(0, 200) }; }
+  try { const d = JSON.parse(text); return d.obj; } catch(e) { return null; }
+}
+
+async function apiPost(base, path, cookie, csrf, body) {
+  const r = await fetch(`${base}${path}`, {
+    method: 'POST',
+    headers: {
+      'Cookie': cookie, 'X-CSRF-Token': csrf, 'X-Requested-With': 'XMLHttpRequest',
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body
+  });
+  const text = await r.text();
+  try { return JSON.parse(text); } catch(e) { return { success: false, msg: 'Empty response' }; }
+}
+
+async function apiPostForm(base, path, cookie, csrf, body) {
+  return apiPost(base, path, cookie, csrf, body);
 }
 
 // ═══════════════════════════════════════════
@@ -169,108 +230,4 @@ function generateRealityKeys() {
   };
 }
 
-// ═══════════════════════════════════════════
-// CREATE INBOUND
-// ═══════════════════════════════════════════
-async function createInbound(base, cookie, csrf, { tcpDomain, tcpPort, privateKey, shortId }) {
-  const hostDomain = base.replace('https://', '').replace('http://', '');
-
-  const streamSettings = {
-    network: 'xhttp',
-    security: 'reality',
-    realitySettings: {
-      show: false,
-      dest: 'www.samsung.com:443',
-      serverNames: ['www.samsung.com'],
-      privateKey: privateKey,
-      shortIds: [shortId],
-      source: '',
-      xver: 0
-    },
-    xhttpSettings: {
-      path: '/',
-      mode: 'auto',
-      extra: {
-        header: { type: 'none' },
-        download: 14,
-        host: hostDomain + '/managepanel/'
-      }
-    }
-  };
-
-  const data = await apiCall(base, '/panel/api/inbounds/add', cookie, csrf, {
-    up: 0, down: 0, total: 0,
-    remark: '@saweg78', enable: true, expiryTime: 0,
-    listen: '', port: 8080, protocol: 'vless',
-    settings: { clients: [], decryption: 'none', fallbacks: [] },
-    streamSettings,
-    sniffing: { enabled: true, destOverride: ['http', 'tls'], routeOnly: false },
-    tag: 'vless_xhttp_reality'
-  });
-
-  if (data.success === false) throw new Error(data.msg || 'Create inbound failed');
-
-  // Get inbound ID
-  const listData = await apiCall(base, '/panel/api/inbounds', cookie, csrf);
-  const inbounds = listData.obj || [];
-  const inbound = inbounds.find(i => i.remark === '@saweg78');
-  if (!inbound) throw new Error('Inbound not found after creation');
-  return inbound.id;
-}
-
-// ═══════════════════════════════════════════
-// CONFIGURE SUBSCRIPTION
-// ═══════════════════════════════════════════
-async function configureSubscription(base, cookie, csrf, panelDomain) {
-  const data = await apiCall(base, '/panel/api/panel/updatePanelSettings', cookie, csrf, {
-    settings: {
-      sub: {
-        subEnable: true,
-        subPath: '/sub/',
-        subDomain: '',
-        subUri: `https://${panelDomain}/sub/`
-      }
-    }
-  });
-  if (data.success === false) throw new Error(data.msg || 'Configure subscription failed');
-}
-
-// ═══════════════════════════════════════════
-// RESTART PANEL
-// ═══════════════════════════════════════════
-async function restartPanel(base, cookie, csrf) {
-  await apiCall(base, '/panel/api/restart', cookie, csrf, {});
-}
-
-// ═══════════════════════════════════════════
-// CREATE CLIENT
-// ═══════════════════════════════════════════
-async function createClient(base, cookie, csrf, inboundId) {
-  const expiryTime = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60);
-  const uuid = crypto.randomUUID();
-  const email = `user-${uuid.substring(0, 8)}`;
-
-  const client = {
-    email, enable: true, expiryTime,
-    trafficLimit: 100, trafficLimitUnit: 'GB',
-    uuid, subId: '', limitIp: 0,
-    flow: 'xtls-rprx-vision'
-  };
-
-  const data = await apiCall(base, `/panel/api/inbounds/update/${inboundId}`, cookie, csrf, {
-    id: inboundId,
-    settings: { clients: [client] }
-  });
-  if (data.success === false) throw new Error(data.msg || 'Create client failed');
-
-  const hostDomain = base.replace('https://', '').replace('http://', '');
-  const configUrl = `vless://${uuid}@${hostDomain}:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=www.samsung.com&fp=chrome&type=xhttp&path=%2F&mode=auto#${encodeURIComponent(email)}`;
-  const subscriptionUrl = `${base}/sub/${uuid}`;
-
-  return { config: configUrl, subscription: subscriptionUrl, email };
-}
-
-// ═══════════════════════════════════════════
-// HELPERS
-// ═══════════════════════════════════════════
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
