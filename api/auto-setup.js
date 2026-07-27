@@ -77,6 +77,11 @@ module.exports = async (req, res) => {
       updated.sub.subEnable = true;
       updated.sub.subPath = '/sub/';
       updated.sub.subUri = `https://${panelDomain}/sub/`;
+      // Ensure required fields have valid values
+      if (!updated.webPort || updated.webPort < 1) updated.webPort = 2053;
+      if (!updated.sessionMaxAge || updated.sessionMaxAge < 1) updated.sessionMaxAge = 360;
+      if (!updated.smtpPort) updated.smtpPort = 0;
+      if (!updated.subPort) updated.subPort = 0;
       const settingsBody = new URLSearchParams({ settings: JSON.stringify(updated) });
       const updateResult = await apiPostForm(base, '/panel/api/setting/update', cookie, csrf, settingsBody.toString());
       if (!updateResult?.success) throw new Error(updateResult?.msg || 'Settings update failed');
