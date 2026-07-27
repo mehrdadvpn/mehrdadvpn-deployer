@@ -71,21 +71,23 @@ module.exports = async (req, res) => {
     // ═══ Step 5: Configure subscription ═══
     step('📋 تنظیم Subscription...');
     const allSettings = await apiPostForm(base, '/panel/api/setting/all', cookie, csrf, '');
-    if (allSettings?.obj) {
-      const updated = allSettings.obj;
-      updated.sub = updated.sub || {};
-      updated.sub.subEnable = true;
-      updated.sub.subPath = '/sub/';
-      updated.sub.subUri = `https://${panelDomain}/sub/`;
-      // Ensure required fields have valid values
-      if (!updated.webPort || updated.webPort < 1) updated.webPort = 2053;
-      if (!updated.sessionMaxAge || updated.sessionMaxAge < 1) updated.sessionMaxAge = 360;
-      if (!updated.smtpPort) updated.smtpPort = 0;
-      if (!updated.subPort) updated.subPort = 0;
-      const settingsBody = new URLSearchParams({ settings: JSON.stringify(updated) });
-      const updateResult = await apiPostForm(base, '/panel/api/setting/update', cookie, csrf, settingsBody.toString());
-      if (!updateResult?.success) throw new Error(updateResult?.msg || 'Settings update failed');
-    }
+    const s = allSettings?.obj || {};
+    // Build flat form fields for settings update
+    const subParams = new URLSearchParams();
+    subParams.append('webPort', String(s.webPort || 2053));
+    subParams.append('sessionMaxAge', String(s.sessionMaxAge || 360));
+    subParams.append('pageSize', String(s.pageSize || 25));
+    subParams.append('expireDiff', String(s.expireDiff || 0));
+    subParams.append('trafficDiff', String(s.trafficDiff || 0));
+    subParams.append('datepicker', s.datepicker || 'gregorian');
+    subParams.append('subPort', String(s.subPort || 2096));
+    subParams.append('smtpPort', String(s.smtpPort || 587));
+    subParams.append('tgBotEnable', 'false');
+    subParams.append('subEnable', 'true');
+    subParams.append('subPath', '/sub/');
+    subParams.append('subUri', `https://${panelDomain}/sub/`);
+    const updateResult = await apiPostForm(base, '/panel/api/setting/update', cookie, csrf, subParams.toString());
+    if (!updateResult?.success) throw new Error(updateResult?.msg || 'Settings update failed');
     step('✅ Subscription تنظیم شد');
 
     // ═══ Step 6: Restart Xray ═══
