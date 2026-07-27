@@ -13,13 +13,14 @@ module.exports = async (req, res) => {
     return res.status(400).json({ error: 'panelUrl, tcpDomain, tcpPort required' });
   }
 
+  const base = panelUrl.replace(/\/$/, '');
   const log = [];
   const step = (msg) => { log.push(msg); };
 
   try {
     // ═══ Step 1: Login ═══
     step('🔐 ورود به پنل...');
-    const cookie = await login(panelUrl);
+    const { cookie, csrf } = await login(base);
     step('✅ ورود موفق');
 
     // ═══ Step 2: Generate Reality keys ═══
@@ -29,25 +30,23 @@ module.exports = async (req, res) => {
 
     // ═══ Step 3: Create inbound ═══
     step('🌐 ساخت Inbound (VLESS + Xhttp + Reality)...');
-    const inboundId = await createInbound(panelUrl, cookie, {
-      tcpDomain, tcpPort, privateKey: keys.privateKey, shortId: keys.shortId
-    });
+    const inboundId = await createInbound(base, cookie, csrf, { tcpDomain, tcpPort, privateKey: keys.privateKey, shortId: keys.shortId });
     step(`✅ Inbound ساخته شد (ID: ${inboundId})`);
 
     // ═══ Step 4: Configure subscription ═══
     step('📋 تنظیم Subscription...');
-    await configureSubscription(panelUrl, cookie, panelDomain);
+    await configureSubscription(base, cookie, csrf, panelDomain);
     step('✅ Subscription تنظیم شد');
 
     // ═══ Step 5: Restart panel ═══
     step('🔄 ری‌استارت پنل...');
-    await restartPanel(panelUrl, cookie);
+    await restartPanel(base, cookie, csrf);
     step('⏳ ۱۰ ثانیه صبر...');
     await sleep(10000);
 
     // ═══ Step 6: Create client ═══
     step('👤 ساخت Client...');
-    const clientInfo = await createClient(panelUrl, cookie, inboundId);
+    const clientInfo = await createClient(base, cookie, csrf, inboundId);
     step('✅ Client ساخته شد');
 
     return res.status(200).json({
@@ -67,22 +66,17 @@ module.exports = async (req, res) => {
 // ═══════════════════════════════════════════
 // LOGIN
 // ═══════════════════════════════════════════
-async function login(panelUrl) {
-  const base = panelUrl.replace(/\/$/, '');
-
-  // Step 1: Get session cookie + CSRF token
+async function login(base) {
   const pageRes = await fetch(`${base}/`, { redirect: 'manual' });
   const pageHtml = await pageRes.text();
   const csrfMatch = pageHtml.match(/csrf-token["\s]+content="([^"]+)"/);
   if (!csrfMatch) throw new Error('CSRF token not found');
   const csrfToken = csrfMatch[1];
 
-  // Get cookie from page response
   const setCookie = pageRes.headers.get('set-cookie');
   if (!setCookie) throw new Error('No session cookie');
   const sessionCookie = setCookie.split(';')[0];
 
-  // Step 2: Login with CSRF + session cookie
   const loginRes = await fetch(`${base}/login`, {
     method: 'POST',
     headers: {
@@ -98,37 +92,52 @@ async function login(panelUrl) {
   const loginData = await loginRes.json();
   if (!loginData.success) throw new Error(loginData.msg || 'Login failed');
 
-  // Get updated cookie after login
   const loginCookie = loginRes.headers.get('set-cookie');
+  let cookie = sessionCookie;
   if (loginCookie) {
-    return sessionCookie.split('=')[0] + '=' + loginCookie.split(';')[0].split('=').slice(1).join('=');
+    cookie = sessionCookie.split('=')[0] + '=' + loginCookie.split(';')[0].split('=').slice(1).join('=');
   }
-  return sessionCookie;
+  return { cookie, csrf: csrfToken };
+}
+
+// ═══════════════════════════════════════════
+// API HELPER
+// ═══════════════════════════════════════════
+async function apiCall(base, path, cookie, csrf, body = null) {
+  const opts = {
+    method: body ? 'POST' : 'GET',
+    headers: {
+      'Cookie': cookie,
+      'Content-Type': 'application/json',
+      'x-csrf-token': csrf,
+      'x-requested-with': 'XMLHttpRequest'
+    }
+  };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(`${base}${path}`, opts);
+  const text = await r.text();
+  try { return JSON.parse(text); } catch(e) { return { success: false, msg: 'Empty response: ' + text.substring(0, 100) }; }
 }
 
 // ═══════════════════════════════════════════
 // REALITY KEY GENERATION
 // ═══════════════════════════════════════════
 function generateRealityKeys() {
-  // Generate X25519 key pair for Reality
   const { privateKey, publicKey } = crypto.generateKeyPairSync('x25519');
-
-  // Export raw keys (last 32 bytes of DER)
   const privRaw = privateKey.export({ type: 'pkcs8', format: 'der' }).slice(-32);
   const pubRaw = publicKey.export({ type: 'spki', format: 'der' }).slice(-32);
-
-  const privateKeyB64 = privRaw.toString('base64');
-  const publicKeyB64 = pubRaw.toString('base64');
-  const shortId = crypto.randomBytes(4).toString('hex');
-
-  return { privateKey: privateKeyB64, publicKey: publicKeyB64, shortId };
+  return {
+    privateKey: privRaw.toString('base64'),
+    publicKey: pubRaw.toString('base64'),
+    shortId: crypto.randomBytes(4).toString('hex')
+  };
 }
 
 // ═══════════════════════════════════════════
 // CREATE INBOUND
 // ═══════════════════════════════════════════
-async function createInbound(panelUrl, cookie, { tcpDomain, tcpPort, privateKey, shortId }) {
-  const base = panelUrl.replace(/\/$/, '');
+async function createInbound(base, cookie, csrf, { tcpDomain, tcpPort, privateKey, shortId }) {
+  const hostDomain = base.replace('https://', '').replace('http://', '');
 
   const streamSettings = {
     network: 'xhttp',
@@ -148,175 +157,80 @@ async function createInbound(panelUrl, cookie, { tcpDomain, tcpPort, privateKey,
       extra: {
         header: { type: 'none' },
         download: 14,
-        host: panelUrl.replace('https://', '').replace('/managepanel/', '').replace('/managepanel', '') + '/managepanel/'
+        host: hostDomain + '/managepanel/'
       }
     }
   };
 
-  const settings = {
-    clients: [],
-    decryption: 'none',
-    fallbacks: []
-  };
-
-  const sniffing = {
-    enabled: true,
-    destOverride: ['http', 'tls'],
-    routeOnly: false
-  };
-
-  const body = new URLSearchParams();
-  body.append('up', '0');
-  body.append('down', '0');
-  body.append('total', '0');
-  body.append('remark', '@saweg78');
-  body.append('enable', 'true');
-  body.append('expiryTime', '0');
-  body.append('listen', '');
-  body.append('port', '8080');
-  body.append('protocol', 'vless');
-  body.append('settings', JSON.stringify(settings));
-  body.append('streamSettings', JSON.stringify(streamSettings));
-  body.append('sniffing', JSON.stringify(sniffing));
-  body.append('tag', 'vless_xhttp_reality');
-
-  const r = await fetch(`${base}/managepanel/api/inbounds/add`, {
-    method: 'POST',
-    headers: {
-      'Cookie': cookie,
-      'Content-Type': 'application/x-www-form-urlencoded'
-    },
-    body: body.toString()
+  const data = await apiCall(base, '/managepanel/api/inbounds/add', cookie, csrf, {
+    up: 0, down: 0, total: 0,
+    remark: '@saweg78', enable: true, expiryTime: 0,
+    listen: '', port: 8080, protocol: 'vless',
+    settings: { clients: [], decryption: 'none', fallbacks: [] },
+    streamSettings,
+    sniffing: { enabled: true, destOverride: ['http', 'tls'], routeOnly: false },
+    tag: 'vless_xhttp_reality'
   });
 
-  const data = await r.json();
   if (data.success === false) throw new Error(data.msg || 'Create inbound failed');
 
-  // Get the inbound ID
-  const listR = await fetch(`${base}/managepanel/api/inbounds`, {
-    headers: { 'Cookie': cookie }
-  });
-  const listData = await listR.json();
+  const listData = await apiCall(base, '/managepanel/api/inbounds', cookie, csrf);
   const inbounds = listData.obj || [];
   const inbound = inbounds.find(i => i.remark === '@saweg78');
   if (!inbound) throw new Error('Inbound not found after creation');
-
   return inbound.id;
 }
 
 // ═══════════════════════════════════════════
 // CONFIGURE SUBSCRIPTION
 // ═══════════════════════════════════════════
-async function configureSubscription(panelUrl, cookie, panelDomain) {
-  const base = panelUrl.replace(/\/$/, '');
-
-  const settings = {
-    sub: {
-      subEnable: true,
-      subPath: '/sub/',
-      subDomain: '',
-      subUri: `https://${panelDomain}/sub/`
+async function configureSubscription(base, cookie, csrf, panelDomain) {
+  const data = await apiCall(base, '/managepanel/api/panel/updatePanelSettings', cookie, csrf, {
+    settings: {
+      sub: {
+        subEnable: true,
+        subPath: '/sub/',
+        subDomain: '',
+        subUri: `https://${panelDomain}/sub/`
+      }
     }
-  };
-
-  const body = new URLSearchParams();
-  body.append('settings', JSON.stringify(settings));
-
-  const r = await fetch(`${base}/managepanel/api/panel/updatePanelSettings`, {
-    method: 'POST',
-    headers: {
-      'Cookie': cookie,
-      'Content-Type': 'application/x-www-form-urlencoded'
-    },
-    body: body.toString()
   });
-
-  const data = await r.json();
   if (data.success === false) throw new Error(data.msg || 'Configure subscription failed');
 }
 
 // ═══════════════════════════════════════════
 // RESTART PANEL
 // ═══════════════════════════════════════════
-async function restartPanel(panelUrl, cookie) {
-  const base = panelUrl.replace(/\/$/, '');
-  await fetch(`${base}/managepanel/api/restart`, {
-    method: 'POST',
-    headers: { 'Cookie': cookie }
-  });
+async function restartPanel(base, cookie, csrf) {
+  await apiCall(base, '/managepanel/api/restart', cookie, csrf, {});
 }
 
 // ═══════════════════════════════════════════
 // CREATE CLIENT
 // ═══════════════════════════════════════════
-async function createClient(panelUrl, cookie, inboundId) {
-  const base = panelUrl.replace(/\/$/, '');
-
-  // 30 days from now
+async function createClient(base, cookie, csrf, inboundId) {
   const expiryTime = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60);
   const uuid = crypto.randomUUID();
   const email = `user-${uuid.substring(0, 8)}`;
 
   const client = {
-    email: email,
-    enable: true,
-    expiryTime: expiryTime,
-    trafficLimit: 100,
-    trafficLimitUnit: 'GB',
-    uuid: uuid,
-    subId: '',
-    limitIp: 0,
+    email, enable: true, expiryTime,
+    trafficLimit: 100, trafficLimitUnit: 'GB',
+    uuid, subId: '', limitIp: 0,
     flow: 'xtls-rprx-vision'
   };
 
-  const body = new URLSearchParams();
-  body.append('id', String(inboundId));
-  body.append('settings', JSON.stringify({ clients: [client] }));
-
-  const r = await fetch(`${base}/managepanel/api/inbounds/update/${inboundId}`, {
-    method: 'POST',
-    headers: {
-      'Cookie': cookie,
-      'Content-Type': 'application/x-www-form-urlencoded'
-    },
-    body: body.toString()
+  const data = await apiCall(base, `/managepanel/api/inbounds/update/${inboundId}`, cookie, csrf, {
+    id: inboundId,
+    settings: { clients: [client] }
   });
-
-  const data = await r.json();
   if (data.success === false) throw new Error(data.msg || 'Create client failed');
 
-  // Build config URL
-  const configUrl = buildVlessConfig({
-    uuid,
-    address: `${base.replace('https://', '').replace('http://', '')}`,
-    port: 443,
-    flow: 'xtls-rprx-vision',
-    remark: email
-  });
-
-  // Build subscription URL
+  const hostDomain = base.replace('https://', '').replace('http://', '');
+  const configUrl = `vless://${uuid}@${hostDomain}:443?encryption=none&flow=xtls-rprx-vision&security=reality&sni=www.samsung.com&fp=chrome&type=xhttp&path=%2F&mode=auto#${encodeURIComponent(email)}`;
   const subscriptionUrl = `${base}/sub/${uuid}`;
 
   return { config: configUrl, subscription: subscriptionUrl, email };
-}
-
-// ═══════════════════════════════════════════
-// BUILD VLESS CONFIG URL
-// ═══════════════════════════════════════════
-function buildVlessConfig({ uuid, address, port, flow, remark }) {
-  const params = new URLSearchParams({
-    encryption: 'none',
-    flow: flow,
-    security: 'reality',
-    sni: 'www.samsung.com',
-    fp: 'chrome',
-    pbk: '',
-    sid: '',
-    type: 'xhttp',
-    path: '/',
-    mode: 'auto'
-  });
-  return `vless://${uuid}@${address}:${port}?${params.toString()}#${encodeURIComponent(remark)}`;
 }
 
 // ═══════════════════════════════════════════
